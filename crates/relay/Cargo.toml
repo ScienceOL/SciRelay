@@ -1,0 +1,22 @@
+[package]
+name = "scilaxy-relay-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "scilaxy-relay"
+path = "src/main.rs"
+
+[dependencies]
+scilaxy-relay-proto = { path = "../proto" }
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+tokio-util.workspace = true
+bytes.workspace = true
+prost.workspace = true
+futures-util.workspace = true
+log.workspace = true
+env_logger.workspace = true
+anyhow.workspace = true
+clap.workspace = true
