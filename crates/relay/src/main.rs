@@ -26,7 +26,11 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::{tungstenite::Message as WsMessage, WebSocketStream};
 
 #[derive(Debug, Parser)]
-#[command(name = "scilaxy-relay", version, about = "RustDesk-compatible TCP relay")]
+#[command(
+    name = "scilaxy-relay",
+    version,
+    about = "RustDesk-compatible TCP relay"
+)]
 struct Args {
     /// Raw TCP relay port (RustDesk default 21117).
     #[arg(long, env = "SCILAXY_RELAY_PORT", default_value_t = 21117)]

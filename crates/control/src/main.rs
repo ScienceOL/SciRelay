@@ -17,7 +17,11 @@ use anyhow::Result;
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[command(name = "scilaxy-control", version, about = "scilaxy-relay control plane")]
+#[command(
+    name = "scilaxy-control",
+    version,
+    about = "scilaxy-relay control plane"
+)]
 struct Args {
     /// Bind port for the HTTP control API.
     #[arg(long, env = "SCILAXY_CONTROL_PORT", default_value_t = 21120)]
@@ -28,7 +32,11 @@ struct Args {
     token: String,
 
     /// Path to the SQLite database file.
-    #[arg(long, env = "SCILAXY_CONTROL_DB", default_value = "scilaxy-control.sqlite")]
+    #[arg(
+        long,
+        env = "SCILAXY_CONTROL_DB",
+        default_value = "scilaxy-control.sqlite"
+    )]
     db: String,
 }
 
