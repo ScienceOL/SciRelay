@@ -1,7 +1,7 @@
 //! `scilaxy-capturer`: native screen-capture publisher.
 //!
 //! v1: ScreenCaptureKit + VideoToolbox via `scilaxy-relay-mac-capturer`
-//! (macOS only). Each H264 NAL unit is forwarded as a single Binary
+//! (macOS only). Each HEVC NAL unit is forwarded as a single Binary
 //! WebSocket frame to the stream server.
 //!
 //! Linux/Windows backends will land in this same crate behind cfg flags;
@@ -14,7 +14,7 @@ use futures_util::SinkExt;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Debug, Parser)]
-#[command(name = "scilaxy-capturer", about = "screen → H264 → scilaxy-stream WS")]
+#[command(name = "scilaxy-capturer", about = "screen → HEVC → scilaxy-stream WS")]
 struct Args {
     /// Stream peer id (the room name on scilaxy-stream).
     #[arg(long, env = "SCILAXY_PEER_ID")]

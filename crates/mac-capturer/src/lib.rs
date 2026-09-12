@@ -1,6 +1,6 @@
 //! macOS-native screen capturer: ScreenCaptureKit + VideoToolbox.
 //!
-//! Replacement for the ffmpeg subprocess pipeline. Streams raw H264
+//! Replacement for the ffmpeg subprocess pipeline. Streams raw HEVC
 //! Annex-B NAL units back through a callback, one NAL per call.
 
 #![cfg(target_os = "macos")]
@@ -9,7 +9,7 @@ use std::os::raw::{c_int, c_void};
 use std::sync::mpsc;
 
 extern "C" {
-    fn xz_capturer_start(
+    fn scilaxy_capturer_start(
         width: i32,
         height: i32,
         fps: i32,
@@ -18,18 +18,18 @@ extern "C" {
         ctx: *mut c_void,
         cb: extern "C" fn(*mut c_void, *const u8, isize, i64),
     ) -> c_int;
-    fn xz_capturer_select_display(display_id: u32) -> c_int;
-    fn xz_capturer_active_display_id() -> u32;
-    fn xz_capturer_list_displays_json(out: *mut u8, cap: isize) -> isize;
-    fn xz_capturer_set_bitrate(kbps: i32) -> c_int;
-    fn xz_capturer_bitrate_kbps() -> i32;
-    fn xz_capturer_set_fps(fps: i32) -> c_int;
-    fn xz_capturer_fps() -> i32;
-    fn xz_capturer_set_resolution(width: i32, height: i32) -> c_int;
-    fn xz_capturer_resolution() -> i32;
+    fn scilaxy_capturer_select_display(display_id: u32) -> c_int;
+    fn scilaxy_capturer_active_display_id() -> u32;
+    fn scilaxy_capturer_list_displays_json(out: *mut u8, cap: isize) -> isize;
+    fn scilaxy_capturer_set_bitrate(kbps: i32) -> c_int;
+    fn scilaxy_capturer_bitrate_kbps() -> i32;
+    fn scilaxy_capturer_set_fps(fps: i32) -> c_int;
+    fn scilaxy_capturer_fps() -> i32;
+    fn scilaxy_capturer_set_resolution(width: i32, height: i32) -> c_int;
+    fn scilaxy_capturer_resolution() -> i32;
 }
 
-/// One H264 NAL unit, with the 4-byte Annex-B start code already prepended.
+/// One HEVC NAL unit, with the 4-byte Annex-B start code already prepended.
 #[derive(Debug, Clone)]
 pub struct Nal {
     pub data: Vec<u8>,
@@ -51,7 +51,7 @@ pub fn start(
     let ctx = Box::into_raw(boxed) as *mut c_void;
 
     let rc = unsafe {
-        xz_capturer_start(
+        scilaxy_capturer_start(
             width as i32,
             height as i32,
             fps as i32,
@@ -63,7 +63,7 @@ pub fn start(
     };
     if rc != 0 {
         unsafe { drop(Box::from_raw(ctx as *mut mpsc::Sender<Nal>)) };
-        return Err("xz_capturer_start failed");
+        return Err("scilaxy_capturer_start failed");
     }
     Ok(rx)
 }
@@ -72,7 +72,7 @@ pub fn start(
 /// tear down the encoder or WS publisher; just swaps SCKit's content
 /// filter. The next encoded keyframe will reflect the new display.
 pub fn select_display(display_id: u32) -> Result<(), &'static str> {
-    let rc = unsafe { xz_capturer_select_display(display_id) };
+    let rc = unsafe { scilaxy_capturer_select_display(display_id) };
     match rc {
         0 => Ok(()),
         1 => Err("capturer not started"),
@@ -82,13 +82,13 @@ pub fn select_display(display_id: u32) -> Result<(), &'static str> {
 
 /// Currently active display id, or `0` if no capturer is running.
 pub fn active_display_id() -> u32 {
-    unsafe { xz_capturer_active_display_id() }
+    unsafe { scilaxy_capturer_active_display_id() }
 }
 
 /// Set the encoder's average bitrate ceiling (kbps). Cheap — VT applies
 /// it on the next frame.
 pub fn set_bitrate_kbps(kbps: u32) -> Result<(), &'static str> {
-    let rc = unsafe { xz_capturer_set_bitrate(kbps as i32) };
+    let rc = unsafe { scilaxy_capturer_set_bitrate(kbps as i32) };
     match rc {
         0 => Ok(()),
         1 => Err("capturer not started"),
@@ -98,7 +98,7 @@ pub fn set_bitrate_kbps(kbps: u32) -> Result<(), &'static str> {
 
 /// Currently configured bitrate (kbps), or 0 if no capturer running.
 pub fn bitrate_kbps() -> u32 {
-    let v = unsafe { xz_capturer_bitrate_kbps() };
+    let v = unsafe { scilaxy_capturer_bitrate_kbps() };
     if v < 0 {
         0
     } else {
@@ -108,7 +108,7 @@ pub fn bitrate_kbps() -> u32 {
 
 /// Set the target framerate. Updates SCKit + VT in one shot.
 pub fn set_fps(fps: u32) -> Result<(), &'static str> {
-    let rc = unsafe { xz_capturer_set_fps(fps as i32) };
+    let rc = unsafe { scilaxy_capturer_set_fps(fps as i32) };
     match rc {
         0 => Ok(()),
         1 => Err("capturer not started"),
@@ -117,7 +117,7 @@ pub fn set_fps(fps: u32) -> Result<(), &'static str> {
 }
 
 pub fn fps() -> u32 {
-    let v = unsafe { xz_capturer_fps() };
+    let v = unsafe { scilaxy_capturer_fps() };
     if v < 0 {
         0
     } else {
@@ -128,7 +128,7 @@ pub fn fps() -> u32 {
 /// Switch output resolution. Briefly freezes the viewer (~200ms) while
 /// the encoder rebuilds.
 pub fn set_resolution(width: u32, height: u32) -> Result<(), &'static str> {
-    let rc = unsafe { xz_capturer_set_resolution(width as i32, height as i32) };
+    let rc = unsafe { scilaxy_capturer_set_resolution(width as i32, height as i32) };
     match rc {
         0 => Ok(()),
         1 => Err("capturer not started"),
@@ -138,7 +138,7 @@ pub fn set_resolution(width: u32, height: u32) -> Result<(), &'static str> {
 
 /// Returns `(width, height)`, or `(0, 0)` if no capturer is running.
 pub fn resolution() -> (u32, u32) {
-    let v = unsafe { xz_capturer_resolution() };
+    let v = unsafe { scilaxy_capturer_resolution() };
     if v <= 0 {
         return (0, 0);
     }
@@ -163,7 +163,7 @@ pub fn list_displays() -> Vec<DisplayInfo> {
     // 8 KB is far more than enough for typical setups (a 12-monitor wall
     // would be ≈ 1 KB).
     let mut buf = vec![0u8; 8192];
-    let n = unsafe { xz_capturer_list_displays_json(buf.as_mut_ptr(), buf.len() as isize) };
+    let n = unsafe { scilaxy_capturer_list_displays_json(buf.as_mut_ptr(), buf.len() as isize) };
     if n < 0 {
         return Vec::new();
     }
