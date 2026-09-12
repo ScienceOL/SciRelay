@@ -13,8 +13,8 @@ import sys
 import base64
 import hashlib
 
-HOST = os.environ.get("XYZEN_HOST", "127.0.0.1")
-PORT = int(os.environ.get("XYZEN_WS_PORT", "21118"))
+HOST = os.environ.get("SCILAXY_HOST", "127.0.0.1")
+PORT = int(os.environ.get("SCILAXY_RDV_WS_PORT", "21118"))
 
 def varint(n: int) -> bytes:
     out = bytearray()

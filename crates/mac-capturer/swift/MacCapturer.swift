@@ -1,14 +1,14 @@
 // MacCapturer.swift
 //
-// Native screen capture + H264 encoding pipeline for xyzen-capturer.
+// Native screen capture + HEVC encoding pipeline for scilaxy-capturer.
 //
 //   ScreenCaptureKit (macOS 12.3+) → CVPixelBuffer
-//     → VTCompressionSession (H264 baseline 4.0, 30fps, 1s GOP)
+//     → VTCompressionSession (HEVC Main, 30fps, 1s GOP)
 //     → Annex-B NAL bytes → Rust callback
 //
 // The pipeline is intentionally synchronous on a single dispatch queue.
 // Rust receives a flat byte buffer per NAL unit (with 4-byte start code),
-// which is exactly what xyzen-capturer's WebSocket publisher expects.
+// which is exactly what scilaxy-capturer's WebSocket publisher expects.
 //
 // We expose a small C ABI so build.rs can `swiftc -emit-library`
 // and Rust can `extern "C"` it with `#[link]`.
@@ -23,7 +23,7 @@ import CoreVideo
 
 /// One NAL unit, callback-delivered. The buffer is **not** owned by the
 /// callee — copy out before returning.
-public typealias XzNalCallback = @convention(c) (
+public typealias SciLaxyNalCallback = @convention(c) (
     _ ctx: UnsafeMutableRawPointer?,
     _ data: UnsafePointer<UInt8>,
     _ length: Int,
@@ -31,19 +31,19 @@ public typealias XzNalCallback = @convention(c) (
 ) -> Void
 
 /// One-display-per-process singleton. We hold on to the running
-/// MacCapturer so `xz_capturer_select_display` can swap the SCStream's
+/// MacCapturer so `scilaxy_capturer_select_display` can swap the SCStream's
 /// content filter without tearing down the encoder + WS publisher.
 nonisolated(unsafe) private var sharedCapturer: MacCapturer?
 
-@_cdecl("xz_capturer_start")
-public func xz_capturer_start(
+@_cdecl("scilaxy_capturer_start")
+public func scilaxy_capturer_start(
     width: Int32,
     height: Int32,
     fps: Int32,
     bitrateKbps: Int32,
     displayId: UInt32,           // 0 = default (first display)
     ctx: UnsafeMutableRawPointer?,
-    cb: XzNalCallback
+    cb: SciLaxyNalCallback
 ) -> Int32 {
     let s = MacCapturer(
         width: Int(width),
@@ -57,7 +57,7 @@ public func xz_capturer_start(
     do {
         try s.start()
     } catch {
-        NSLog("xyzen mac-capturer: start failed: \(error)")
+        NSLog("scilaxy mac-capturer: start failed: \(error)")
         return 1
     }
     sharedCapturer = s
@@ -67,22 +67,22 @@ public func xz_capturer_start(
 /// Switch the running capturer to a different display. Returns 0 on
 /// success, non-zero if no capturer is running or SCKit refused the
 /// new content filter.
-@_cdecl("xz_capturer_select_display")
-public func xz_capturer_select_display(displayId: UInt32) -> Int32 {
+@_cdecl("scilaxy_capturer_select_display")
+public func scilaxy_capturer_select_display(displayId: UInt32) -> Int32 {
     guard let s = sharedCapturer else { return 1 }
     do {
         try s.selectDisplay(CGDirectDisplayID(displayId))
         return 0
     } catch {
-        NSLog("xyzen mac-capturer: select_display failed: \(error)")
+        NSLog("scilaxy mac-capturer: select_display failed: \(error)")
         return 2
     }
 }
 
 /// Snapshot of the currently active display (set after `start` /
 /// after a successful `select_display`).
-@_cdecl("xz_capturer_active_display_id")
-public func xz_capturer_active_display_id() -> UInt32 {
+@_cdecl("scilaxy_capturer_active_display_id")
+public func scilaxy_capturer_active_display_id() -> UInt32 {
     return sharedCapturer?.currentDisplayId ?? 0
 }
 
@@ -91,8 +91,8 @@ public func xz_capturer_active_display_id() -> UInt32 {
 /// rebuild, no GOP boundary needed.
 ///
 /// Returns 0 on success, non-zero if the capturer isn't running.
-@_cdecl("xz_capturer_set_bitrate")
-public func xz_capturer_set_bitrate(kbps: Int32) -> Int32 {
+@_cdecl("scilaxy_capturer_set_bitrate")
+public func scilaxy_capturer_set_bitrate(kbps: Int32) -> Int32 {
     guard let s = sharedCapturer, let enc = s.encoderHandle else { return 1 }
     // Clamp to a sane range: 100 kbps floor (anything below that is
     // unusable for screens), 100 Mbps ceiling (above that there's no
@@ -110,8 +110,8 @@ public func xz_capturer_set_bitrate(kbps: Int32) -> Int32 {
 }
 
 /// Currently configured bitrate (kbps), or `0` if no capturer running.
-@_cdecl("xz_capturer_bitrate_kbps")
-public func xz_capturer_bitrate_kbps() -> Int32 {
+@_cdecl("scilaxy_capturer_bitrate_kbps")
+public func scilaxy_capturer_bitrate_kbps() -> Int32 {
     return Int32(sharedCapturer?.currentBitrateKbps ?? 0)
 }
 
@@ -119,22 +119,22 @@ public func xz_capturer_bitrate_kbps() -> Int32 {
 /// `minimumFrameInterval` and VT's `ExpectedFrameRate` /
 /// `MaxKeyFrameInterval` so the GOP cadence stays at 1 second.
 /// Returns 0 on success.
-@_cdecl("xz_capturer_set_fps")
-public func xz_capturer_set_fps(fps: Int32) -> Int32 {
+@_cdecl("scilaxy_capturer_set_fps")
+public func scilaxy_capturer_set_fps(fps: Int32) -> Int32 {
     guard let s = sharedCapturer else { return 1 }
     let clamped = max(5, min(120, Int(fps)))
     do {
         try s.setFps(clamped)
         return 0
     } catch {
-        NSLog("xyzen mac-capturer: setFps failed: \(error)")
+        NSLog("scilaxy mac-capturer: setFps failed: \(error)")
         return 2
     }
 }
 
 /// Currently configured fps, or `0` if no capturer running.
-@_cdecl("xz_capturer_fps")
-public func xz_capturer_fps() -> Int32 {
+@_cdecl("scilaxy_capturer_fps")
+public func scilaxy_capturer_fps() -> Int32 {
     return Int32(sharedCapturer?.currentFps ?? 0)
 }
 
@@ -142,8 +142,8 @@ public func xz_capturer_fps() -> Int32 {
 /// and brings up a new one at the new size; the SCStream stays running.
 /// Expect a brief (~100-200ms) freeze on the viewer side as the new
 /// SPS+PPS+IDR propagate. Returns 0 on success.
-@_cdecl("xz_capturer_set_resolution")
-public func xz_capturer_set_resolution(width: Int32, height: Int32) -> Int32 {
+@_cdecl("scilaxy_capturer_set_resolution")
+public func scilaxy_capturer_set_resolution(width: Int32, height: Int32) -> Int32 {
     guard let s = sharedCapturer else { return 1 }
     let w = max(160, min(7680, Int(width)))
     let h = max(120, min(4320, Int(height)))
@@ -151,15 +151,15 @@ public func xz_capturer_set_resolution(width: Int32, height: Int32) -> Int32 {
         try s.setResolution(width: w, height: h)
         return 0
     } catch {
-        NSLog("xyzen mac-capturer: setResolution failed: \(error)")
+        NSLog("scilaxy mac-capturer: setResolution failed: \(error)")
         return 2
     }
 }
 
 /// Returns `width << 16 | height` packed into a single Int32 — caller
 /// extracts the two halves. Cheap to read; avoids a second FFI call.
-@_cdecl("xz_capturer_resolution")
-public func xz_capturer_resolution() -> Int32 {
+@_cdecl("scilaxy_capturer_resolution")
+public func scilaxy_capturer_resolution() -> Int32 {
     guard let s = sharedCapturer else { return 0 }
     let w = Int32(min(0xFFFF, s.currentWidth))
     let h = Int32(min(0xFFFF, s.currentHeight))
@@ -170,8 +170,8 @@ public func xz_capturer_resolution() -> Int32 {
 /// `[{"id":<u32>,"width":<int>,"height":<int>,"is_primary":<bool>}, …]`.
 /// Returns the number of bytes written, or `-1` if `out` is too small
 /// (caller should retry with `cap` doubled).
-@_cdecl("xz_capturer_list_displays_json")
-public func xz_capturer_list_displays_json(
+@_cdecl("scilaxy_capturer_list_displays_json")
+public func scilaxy_capturer_list_displays_json(
     out: UnsafeMutablePointer<UInt8>,
     cap: Int
 ) -> Int {
@@ -203,10 +203,10 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     private var height: Int
     private var fps: Int
     private let ctx: UnsafeMutableRawPointer?
-    private let cb: XzNalCallback
+    private let cb: SciLaxyNalCallback
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
-    private let queue = DispatchQueue(label: "ai.xyzen.capturer", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "ai.scilaxy.capturer", qos: .userInteractive)
     private var hasEmittedSpsPps = false
 
     /// Caller's preferred display, or `nil` to pick the first one returned
@@ -216,8 +216,8 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     /// Display the SCStream is currently filtering on. Reset whenever
     /// `selectDisplay` swaps the content filter.
     var currentDisplayId: CGDirectDisplayID = 0
-    /// Read-write so `xz_capturer_set_bitrate` can mutate the live encoder.
-    /// Tracked here so callers can `xz_capturer_bitrate_kbps()` it back
+    /// Read-write so `scilaxy_capturer_set_bitrate` can mutate the live encoder.
+    /// Tracked here so callers can `scilaxy_capturer_bitrate_kbps()` it back
     /// without re-poking VT.
     var currentBitrateKbps: Int = 0
     /// Public accessor for the C ABI bridge — VT properties live on the
@@ -226,7 +226,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     var encoderHandle: VTCompressionSession? { encoder }
 
     init(width: Int, height: Int, fps: Int, bitrateKbps: Int,
-         ctx: UnsafeMutableRawPointer?, cb: @escaping XzNalCallback,
+         ctx: UnsafeMutableRawPointer?, cb: @escaping SciLaxyNalCallback,
          initialDisplayId: CGDirectDisplayID? = nil) {
         self.width = width
         self.height = height
@@ -242,12 +242,12 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     var currentFps: Int { fps }
 
     func start() throws {
-        NSLog("xyzen mac-capturer: start()")
+        NSLog("scilaxy mac-capturer: start()")
         // Build the encoder before SCKit so we don't drop frames during init.
         try makeEncoder()
-        NSLog("xyzen mac-capturer: encoder ready")
+        NSLog("scilaxy mac-capturer: encoder ready")
         try startCapture()
-        NSLog("xyzen mac-capturer: capture session started")
+        NSLog("scilaxy mac-capturer: capture session started")
     }
 
     private func makeEncoder() throws {
@@ -332,7 +332,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
             throw NSError(domain: "MacCapturer", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "no display"])
         }
-        NSLog("xyzen mac-capturer: got display id=%u %dx%d",
+        NSLog("scilaxy mac-capturer: got display id=%u %dx%d",
               UInt32(display.displayID), display.width, display.height)
         self.currentDisplayId = display.displayID
 
@@ -397,7 +397,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
         }
         if let e = updateError { throw e }
         self.currentDisplayId = id
-        NSLog("xyzen mac-capturer: switched to display id=%u %dx%d",
+        NSLog("scilaxy mac-capturer: switched to display id=%u %dx%d",
               UInt32(id), display.width, display.height)
     }
 
@@ -448,7 +448,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
                                  value: NSNumber(value: newFps))
         }
         self.fps = newFps
-        NSLog("xyzen mac-capturer: fps -> %d", newFps)
+        NSLog("scilaxy mac-capturer: fps -> %d", newFps)
     }
 
     /// Tear down the encoder, rebuild at the new size, and reconfigure
@@ -497,7 +497,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
         // 3) Build a fresh encoder at the new size with the *current*
         //    bitrate/fps settings preserved.
         try makeEncoder()
-        NSLog("xyzen mac-capturer: resolution -> %dx%d", newW, newH)
+        NSLog("scilaxy mac-capturer: resolution -> %dx%d", newW, newH)
     }
 
     // MARK: SCStreamOutput
@@ -527,7 +527,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        NSLog("xyzen mac-capturer: stream stopped: \(error)")
+        NSLog("scilaxy mac-capturer: stream stopped: \(error)")
     }
 
     // MARK: encode → annex-b
@@ -603,7 +603,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     private func emitAnnexBChunk(_ data: Data, ptsUs: Int64) {
         // Prepend an 8-byte big-endian wallclock microsecond timestamp so
         // the viewer can compute end-to-end latency. This is OUR header,
-        // not part of the H264 stream — viewer must strip the first 8
+        // not part of the HEVC stream — viewer must strip the first 8
         // bytes before passing the NAL to its decoder.
         //
         // Wallclock vs PTS: the viewer's clock is independent (different
@@ -680,7 +680,7 @@ private func listDisplaysSync() -> [DisplayInfo] {
             )
         }
     } catch {
-        NSLog("xyzen mac-capturer: listDisplaysSync failed: \(error)")
+        NSLog("scilaxy mac-capturer: listDisplaysSync failed: \(error)")
         return []
     }
 }

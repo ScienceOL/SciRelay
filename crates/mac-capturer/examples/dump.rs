@@ -1,14 +1,18 @@
-//! `cargo run -p scilaxy-relay-mac-capturer --example dump > /tmp/native.h264`
+//! `cargo run -p scilaxy-relay-mac-capturer --example dump > /tmp/native.h265`
 //!
 //! Stream raw NAL bytes from the Swift capturer to stdout for ~3s, then exit.
 //! Use ffprobe to validate the output afterwards.
 
+#[cfg(target_os = "macos")]
 use std::io::{self, Write};
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "macos")]
 fn main() {
     eprintln!("starting native mac capturer (1920x1080 @30fps, 4 Mbps)");
-    let rx = scilaxy_relay_mac_capturer::start(1920, 1080, 30, 4000).expect("start mac-capturer");
+    let rx =
+        scilaxy_relay_mac_capturer::start(1920, 1080, 30, 4000, 0).expect("start mac-capturer");
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -23,4 +27,9 @@ fn main() {
         }
     }
     eprintln!("dumped {nals} NALs, {bytes} bytes");
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    eprintln!("the native mac capturer example requires macOS");
 }

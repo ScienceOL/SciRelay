@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end fan-out smoke test for xyzen-stream.
+"""End-to-end fan-out smoke test for scilaxy-stream.
 
 Opens one publisher (ws /ws/stream/<peer>) and two viewers (ws /ws/view/<peer>),
 sends 5 binary frames from the publisher, expects each viewer to receive all 5
@@ -13,8 +13,8 @@ import base64
 import threading
 import time
 
-HOST = os.environ.get("XYZEN_HOST", "127.0.0.1")
-PORT = int(os.environ.get("XYZEN_STREAM_PORT", "21130"))
+HOST = os.environ.get("SCILAXY_HOST", "127.0.0.1")
+PORT = int(os.environ.get("SCILAXY_STREAM_PORT", "21130"))
 
 
 def ws_connect(path: str):

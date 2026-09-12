@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Verify that ws://localhost/ws/id reaches xyzen-rendezvous via nginx."""
+"""Verify that ws://localhost/ws/id reaches scilaxy-rendezvous via nginx."""
 import os, socket, struct, sys, base64
 
-HOST = os.environ.get("XYZEN_HOST", "127.0.0.1")
-PORT = int(os.environ.get("XYZEN_PORT", "80"))
-PATH = os.environ.get("XYZEN_PATH", "/ws/id")
+HOST = os.environ.get("SCILAXY_HOST", "127.0.0.1")
+PORT = int(os.environ.get("SCILAXY_PORT", "80"))
+PATH = os.environ.get("SCILAXY_PATH", "/ws/id")
 
 def varint(n):
     o = bytearray()
@@ -70,7 +70,7 @@ need(cur + n)
 body = bytes(buf[cur:cur+n])
 print(f"got {len(body)} bytes: {body.hex()}", file=sys.stderr)
 if body[:2] == b"\x3a\x00":
-    print("OK: nginx → xyzen-rendezvous WebSocket path works", file=sys.stderr)
+    print("OK: nginx → scilaxy-rendezvous WebSocket path works", file=sys.stderr)
     sys.exit(0)
 else:
     print(f"unexpected body: {body.hex()}", file=sys.stderr)
