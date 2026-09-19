@@ -14,7 +14,10 @@ use futures_util::SinkExt;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Debug, Parser)]
-#[command(name = "liyanlabs-capturer", about = "screen → HEVC → liyanlabs-stream WS")]
+#[command(
+    name = "liyanlabs-capturer",
+    about = "screen → HEVC → liyanlabs-stream WS"
+)]
 struct Args {
     /// Stream peer id (the room name on liyanlabs-stream).
     #[arg(long, env = "LIYANLABS_PEER_ID")]
