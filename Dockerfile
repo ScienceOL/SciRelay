@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1.7
 #
-# Build all scilaxy-relay binaries in one shared cargo-chef pass, then
+# Build all liyanlabs-relay binaries in one shared cargo-chef pass, then
 # split into per-binary runtime images via the `BIN` build-arg. The
 # alternative — four independent Dockerfiles — would re-download the
 # entire dependency graph four times in CI; this layout shares the
 # `cargo chef cook` cache across all four targets.
 #
 # Build:
-#   docker build --build-arg BIN=stream     -t scilaxy-relay-stream:dev .
-#   docker build --build-arg BIN=control    -t scilaxy-relay-control:dev .
-#   docker build --build-arg BIN=rendezvous -t scilaxy-relay-rendezvous:dev .
-#   docker build --build-arg BIN=relay      -t scilaxy-relay-relay:dev .
+#   docker build --build-arg BIN=stream     -t liyanlabs-relay-stream:dev .
+#   docker build --build-arg BIN=control    -t liyanlabs-relay-control:dev .
+#   docker build --build-arg BIN=rendezvous -t liyanlabs-relay-rendezvous:dev .
+#   docker build --build-arg BIN=relay      -t liyanlabs-relay-relay:dev .
 #
 # Each binary is a self-contained statically-linked-ish binary (libc
 # only) that listens on a single port — see crate-specific README for
@@ -55,10 +55,10 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # in the relay's k8s pods.
 COPY . .
 RUN cargo build --release \
-    --bin scilaxy-stream \
-    --bin scilaxy-control \
-    --bin scilaxy-rendezvous \
-    --bin scilaxy-relay
+    --bin liyanlabs-stream \
+    --bin liyanlabs-control \
+    --bin liyanlabs-rendezvous \
+    --bin liyanlabs-relay
 
 # ─── Runtime: select one binary per image via the BIN build arg ───
 FROM debian:bookworm-slim AS runtime
@@ -67,15 +67,15 @@ ENV BIN=${BIN}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 1000 scilaxy \
-    && useradd --system --uid 1000 --gid 1000 --shell /usr/sbin/nologin scilaxy
+    && groupadd --system --gid 1000 liyanlabs \
+    && useradd --system --uid 1000 --gid 1000 --shell /usr/sbin/nologin liyanlabs
 
 # Map the BIN arg to the actual cargo target name. Cargo binaries are
-# `scilaxy-{stream,control,rendezvous,relay}` and we copy whichever the
+# `liyanlabs-{stream,control,rendezvous,relay}` and we copy whichever the
 # caller asked for.
-COPY --from=builder /app/target/release/scilaxy-${BIN} /usr/local/bin/scilaxy-server
-USER scilaxy
+COPY --from=builder /app/target/release/liyanlabs-${BIN} /usr/local/bin/liyanlabs-server
+USER liyanlabs
 # Each binary reads its bind config from CLI flags / env. We don't
 # pin a port via EXPOSE because the four binaries listen on different
 # ports — k8s Service handles port mapping anyway.
-ENTRYPOINT ["/usr/local/bin/scilaxy-server"]
+ENTRYPOINT ["/usr/local/bin/liyanlabs-server"]

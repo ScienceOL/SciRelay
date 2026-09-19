@@ -1,11 +1,11 @@
-//! `scilaxy-control`: HTTP control plane for scilaxy-relay.
+//! `liyanlabs-control`: HTTP control plane for liyanlabs-relay.
 //!
 //! Single-binary v1: hosts the rendezvous + relay listeners alongside an
 //! HTTP API. We split to separate processes (and swap sqlite → postgres)
 //! when we need to scale horizontally.
 //!
 //! Authentication: every protected route requires a bearer token matching
-//! `--token` / `SCILAXY_CONTROL_TOKEN`. Scilaxy's backend holds this secret;
+//! `--token` / `LIYANLABS_CONTROL_TOKEN`. LiyanLabs's backend holds this secret;
 //! end users never see it.
 
 mod audit;
@@ -18,24 +18,24 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "scilaxy-control",
+    name = "liyanlabs-control",
     version,
-    about = "scilaxy-relay control plane"
+    about = "liyanlabs-relay control plane"
 )]
 struct Args {
     /// Bind port for the HTTP control API.
-    #[arg(long, env = "SCILAXY_CONTROL_PORT", default_value_t = 21120)]
+    #[arg(long, env = "LIYANLABS_CONTROL_PORT", default_value_t = 21120)]
     port: u16,
 
     /// Shared bearer token clients must present.
-    #[arg(long, env = "SCILAXY_CONTROL_TOKEN")]
+    #[arg(long, env = "LIYANLABS_CONTROL_TOKEN")]
     token: String,
 
     /// Path to the SQLite database file.
     #[arg(
         long,
-        env = "SCILAXY_CONTROL_DB",
-        default_value = "scilaxy-control.sqlite"
+        env = "LIYANLABS_CONTROL_DB",
+        default_value = "liyanlabs-control.sqlite"
     )]
     db: String,
 }

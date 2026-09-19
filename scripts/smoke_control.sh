@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test for scilaxy-relay-control.
+# End-to-end smoke test for liyanlabs-relay-control.
 #
 # Verifies:
 #   1. POST /v1/peers binds a user_id to a fresh 9-digit peer_id
@@ -9,13 +9,13 @@
 #   5. GET /v1/audit shows the register event
 #   6. Bearer-token auth rejects unauthenticated calls
 #
-# Requires: scilaxy-control on :21120, scilaxy-rendezvous on :21116, both wired
-# with the same SCILAXY_CONTROL_TOKEN.
+# Requires: liyanlabs-control on :21120, liyanlabs-rendezvous on :21116, both wired
+# with the same LIYANLABS_CONTROL_TOKEN.
 
 set -euo pipefail
 
-TOKEN="${SCILAXY_CONTROL_TOKEN:-dev-secret-test-token}"
-CONTROL="${SCILAXY_CONTROL_URL:-http://127.0.0.1:21120}"
+TOKEN="${LIYANLABS_CONTROL_TOKEN:-dev-secret-test-token}"
+CONTROL="${LIYANLABS_CONTROL_URL:-http://127.0.0.1:21120}"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 green() { printf "\033[32m%s\033[0m\n" "$*"; }

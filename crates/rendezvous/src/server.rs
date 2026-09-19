@@ -20,8 +20,8 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_util::codec::Framed;
 
-use scilaxy_relay_proto::codec::RustDeskCodec;
-use scilaxy_relay_proto::hbb::{
+use liyanlabs_relay_proto::codec::RustDeskCodec;
+use liyanlabs_relay_proto::hbb::{
     rendezvous_message::Union, RegisterPeerResponse, RegisterPkResponse, RelayResponse,
     RendezvousMessage, RequestRelay,
 };
@@ -48,7 +48,7 @@ pub async fn run(relay_addr: &str, port: u16, ws_port: u16, auditor: Auditor) ->
         .await
         .with_context(|| format!("bind WS {ws_bind}"))?;
     log::info!(
-        "scilaxy-rendezvous listening on udp+tcp {bind}, ws {ws_bind}, relay_addr={relay_addr}"
+        "liyanlabs-rendezvous listening on udp+tcp {bind}, ws {ws_bind}, relay_addr={relay_addr}"
     );
 
     let registry = PeerRegistry::new();

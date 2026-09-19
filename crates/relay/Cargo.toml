@@ -1,15 +1,15 @@
 [package]
-name = "scilaxy-relay-server"
+name = "liyanlabs-relay-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "scilaxy-relay"
+name = "liyanlabs-relay"
 path = "src/main.rs"
 
 [dependencies]
-scilaxy-relay-proto = { path = "../proto" }
+liyanlabs-relay-proto = { path = "../proto" }
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 tokio-util.workspace = true

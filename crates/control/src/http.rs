@@ -35,7 +35,7 @@ pub async fn serve(port: u16, token: String, pool: SqlitePool) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .with_context(|| format!("bind {bind}"))?;
-    tracing::info!("scilaxy-control listening on {bind}");
+    tracing::info!("liyanlabs-control listening on {bind}");
     axum::serve(listener, app).await?;
     Ok(())
 }

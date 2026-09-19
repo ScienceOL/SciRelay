@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use tokio::sync::{mpsc, RwLock};
 
-use scilaxy_relay_proto::hbb::RendezvousMessage;
+use liyanlabs_relay_proto::hbb::RendezvousMessage;
 
 /// How we reach a registered peer to push them a server-initiated message.
 #[derive(Debug, Clone)]

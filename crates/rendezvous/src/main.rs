@@ -1,4 +1,4 @@
-//! `scilaxy-rendezvous`: minimal hbbs replacement.
+//! `liyanlabs-rendezvous`: minimal hbbs replacement.
 //!
 //! First-milestone scope (matches `rustdesk-server-demo`):
 //! * UDP: respond to `RegisterPeer` and `RegisterPk`.
@@ -17,31 +17,31 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "scilaxy-rendezvous",
+    name = "liyanlabs-rendezvous",
     version,
     about = "RustDesk-compatible rendezvous server"
 )]
 struct Args {
     /// Public address handed to clients as their relay server.
-    #[arg(long, env = "SCILAXY_RELAY_ADDR", default_value = "127.0.0.1")]
+    #[arg(long, env = "LIYANLABS_RELAY_ADDR", default_value = "127.0.0.1")]
     relay_addr: String,
 
     /// Bind port for both UDP and TCP rendezvous (RustDesk default 21116).
-    #[arg(long, env = "SCILAXY_RDV_PORT", default_value_t = 21116)]
+    #[arg(long, env = "LIYANLABS_RDV_PORT", default_value_t = 21116)]
     port: u16,
 
     /// WebSocket port (RustDesk default 21118 — used by web/RN clients).
-    #[arg(long, env = "SCILAXY_RDV_WS_PORT", default_value_t = 21118)]
+    #[arg(long, env = "LIYANLABS_RDV_WS_PORT", default_value_t = 21118)]
     ws_port: u16,
 
     /// Optional audit ingest URL on the control plane
     /// (e.g. http://127.0.0.1:21120/v1/_internal/audit).
     /// When unset, events are only logged.
-    #[arg(long, env = "SCILAXY_AUDIT_URL")]
+    #[arg(long, env = "LIYANLABS_AUDIT_URL")]
     audit_url: Option<String>,
 
     /// Bearer token for the control-plane audit ingest endpoint.
-    #[arg(long, env = "SCILAXY_CONTROL_TOKEN")]
+    #[arg(long, env = "LIYANLABS_CONTROL_TOKEN")]
     audit_token: Option<String>,
 }
 

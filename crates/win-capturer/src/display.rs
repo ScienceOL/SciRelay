@@ -42,7 +42,7 @@ pub fn list_displays() -> Vec<DisplayInfo> {
                 };
                 Some(DisplayInfo {
                     // 1-based id so 0 stays reserved for "default
-                    // monitor" in scilaxy_capturer_start, matching the
+                    // monitor" in liyanlabs_capturer_start, matching the
                     // mac-capturer convention.
                     id: (idx as u32) + 1,
                     width,

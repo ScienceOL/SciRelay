@@ -1,6 +1,6 @@
-//! `scilaxy-capturer`: native screen-capture publisher.
+//! `liyanlabs-capturer`: native screen-capture publisher.
 //!
-//! v1: ScreenCaptureKit + VideoToolbox via `scilaxy-relay-mac-capturer`
+//! v1: ScreenCaptureKit + VideoToolbox via `liyanlabs-relay-mac-capturer`
 //! (macOS only). Each HEVC NAL unit is forwarded as a single Binary
 //! WebSocket frame to the stream server.
 //!
@@ -14,16 +14,16 @@ use futures_util::SinkExt;
 use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Debug, Parser)]
-#[command(name = "scilaxy-capturer", about = "screen → HEVC → scilaxy-stream WS")]
+#[command(name = "liyanlabs-capturer", about = "screen → HEVC → liyanlabs-stream WS")]
 struct Args {
-    /// Stream peer id (the room name on scilaxy-stream).
-    #[arg(long, env = "SCILAXY_PEER_ID")]
+    /// Stream peer id (the room name on liyanlabs-stream).
+    #[arg(long, env = "LIYANLABS_PEER_ID")]
     peer_id: String,
 
-    /// scilaxy-stream publisher URL. Path part is auto-suffixed with the peer id.
+    /// liyanlabs-stream publisher URL. Path part is auto-suffixed with the peer id.
     #[arg(
         long,
-        env = "SCILAXY_STREAM_URL",
+        env = "LIYANLABS_STREAM_URL",
         default_value = "ws://127.0.0.1:21130/ws/stream"
     )]
     stream_url: String,
@@ -105,12 +105,12 @@ fn start_native(
     height: u32,
     fps: u32,
     bitrate_kbps: u32,
-) -> Result<std::sync::mpsc::Receiver<scilaxy_relay_mac_capturer::Nal>> {
+) -> Result<std::sync::mpsc::Receiver<liyanlabs_relay_mac_capturer::Nal>> {
     // display_id=0 selects the primary display, matching mac-capturer's
     // convention. The standalone capturer binary is a PoC and doesn't
-    // expose a picker — production runners go through scilaxy-runner's
+    // expose a picker — production runners go through liyanlabs-runner's
     // executor::stream which threads the user-selected display through.
-    scilaxy_relay_mac_capturer::start(width, height, fps, bitrate_kbps, 0)
+    liyanlabs_relay_mac_capturer::start(width, height, fps, bitrate_kbps, 0)
         .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
@@ -121,7 +121,7 @@ fn start_native(
     _fps: u32,
     _b: u32,
 ) -> Result<std::sync::mpsc::Receiver<DummyNal>> {
-    anyhow::bail!("scilaxy-capturer: only macOS is supported in v1");
+    anyhow::bail!("liyanlabs-capturer: only macOS is supported in v1");
 }
 
 #[cfg(not(target_os = "macos"))]

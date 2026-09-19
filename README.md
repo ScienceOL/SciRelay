@@ -1,8 +1,8 @@
-# scilaxy-relay
+# liyanlabs-relay
 
 A self-hosted RustDesk-compatible rendezvous + relay server, written from
 scratch and licensed AGPL-3.0-or-later. Designed to back the remote-desktop
-feature for advanced users of [Scilaxy](https://scilaxy.ai).
+feature for advanced users of [LiyanLabs](https://liyanlabs.com).
 
 ## Status
 
@@ -28,5 +28,5 @@ This project is **AGPL-3.0-or-later**. RustDesk's wire protocol definitions
 network-accessible service is required by §13 to make the corresponding
 source available to its users.
 
-The Scilaxy product itself is **not** a derivative of this code: it talks to
-`scilaxy-relay` only over a network API.
+The LiyanLabs product itself is **not** a derivative of this code: it talks to
+`liyanlabs-relay` only over a network API.

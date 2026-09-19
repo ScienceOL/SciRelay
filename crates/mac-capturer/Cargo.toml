@@ -1,11 +1,11 @@
 [package]
-name = "scilaxy-relay-mac-capturer"
+name = "liyanlabs-relay-mac-capturer"
 version.workspace = true
 edition.workspace = true
 # Dual-licensed: this crate contains only first-party code (no AGPL
 # upstream sources). MIT lets it be embedded into the MIT-licensed
-# scilaxy-runner without spreading AGPL through the runner workspace;
-# AGPL keeps it compatible with the rest of scilaxy-relay.
+# liyanlabs-runner without spreading AGPL through the runner workspace;
+# AGPL keeps it compatible with the rest of liyanlabs-relay.
 license = "MIT OR AGPL-3.0-or-later"
 
 [lib]

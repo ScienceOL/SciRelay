@@ -1,6 +1,6 @@
 //! Windows-native screen capturer: WGC + MediaFoundation H264 encoder.
 //!
-//! Mirror of `scilaxy-relay-mac-capturer`. Same public surface, same
+//! Mirror of `liyanlabs-relay-mac-capturer`. Same public surface, same
 //! wire format on the WebSocket: per-NAL 8-byte big-endian wallclock-µs
 //! prefix + raw H264 Annex-B (00 00 00 01 + NAL bytes). Viewer code
 //! (`useH264Stream` in the web app) needs zero changes.
@@ -43,7 +43,7 @@ pub use publisher::{
 };
 
 /// One H264 NAL unit, with the 4-byte Annex-B start code already prepended.
-/// Keep the shape byte-identical to `scilaxy-relay-mac-capturer::Nal` so the
+/// Keep the shape byte-identical to `liyanlabs-relay-mac-capturer::Nal` so the
 /// runner's stream module can use the same channel signature on both
 /// platforms with no per-OS plumbing.
 #[derive(Debug, Clone)]

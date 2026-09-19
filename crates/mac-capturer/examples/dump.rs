@@ -1,4 +1,4 @@
-//! `cargo run -p scilaxy-relay-mac-capturer --example dump > /tmp/native.h265`
+//! `cargo run -p liyanlabs-relay-mac-capturer --example dump > /tmp/native.h265`
 //!
 //! Stream raw NAL bytes from the Swift capturer to stdout for ~3s, then exit.
 //! Use ffprobe to validate the output afterwards.
@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 fn main() {
     eprintln!("starting native mac capturer (1920x1080 @30fps, 4 Mbps)");
     let rx =
-        scilaxy_relay_mac_capturer::start(1920, 1080, 30, 4000, 0).expect("start mac-capturer");
+        liyanlabs_relay_mac_capturer::start(1920, 1080, 30, 4000, 0).expect("start mac-capturer");
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let deadline = Instant::now() + Duration::from_secs(3);

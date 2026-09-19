@@ -1,17 +1,17 @@
-# Build and publish scilaxy-relay server-side images to ghcr.io.
+# Build and publish liyanlabs-relay server-side images to ghcr.io.
 #
 # Triggers:
 #   - push to main           → push :main + :sha tags
 #   - tag v*                 → push :sha + :v* + :latest tags
 #   - workflow_dispatch      → manual run
 #
-# We deliberately publish under ghcr.io/scienceol/scilaxy-relay-* so
+# We deliberately publish under ghcr.io/scienceol/liyanlabs-relay-* so
 # any cluster (or any developer) can `docker pull` without auth — the
 # repo itself is public. The k8s manifests pin to a specific :sha or
 # :v* tag so a "latest" rolling deploy never happens by accident.
 #
 # What's NOT here: the desktop-side capturer (mac-capturer + capturer
-# crates). Those compile only on macOS and ship inside the Scilaxy
+# crates). Those compile only on macOS and ship inside the LiyanLabs
 # runner binary via the runner repo's own release pipeline.
 
 name: release
@@ -33,7 +33,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/scienceol/scilaxy-relay
+  IMAGE_PREFIX: ghcr.io/scienceol/liyanlabs-relay
 
 jobs:
   test:
@@ -51,8 +51,8 @@ jobs:
         # missing Apple frameworks.
         run: |
           cargo check --workspace \
-            --exclude scilaxy-relay-mac-capturer \
-            --exclude scilaxy-relay-capturer
+            --exclude liyanlabs-relay-mac-capturer \
+            --exclude liyanlabs-relay-capturer
       - name: cargo clippy (informational)
         # Run clippy purely for visibility — never gate the pipeline
         # on it. Real lint cleanup happens in standalone PRs once
@@ -61,13 +61,13 @@ jobs:
         continue-on-error: true
         run: |
           cargo clippy --workspace \
-            --exclude scilaxy-relay-mac-capturer \
-            --exclude scilaxy-relay-capturer || true
+            --exclude liyanlabs-relay-mac-capturer \
+            --exclude liyanlabs-relay-capturer || true
       - name: cargo test
         run: |
           cargo test --workspace \
-            --exclude scilaxy-relay-mac-capturer \
-            --exclude scilaxy-relay-capturer
+            --exclude liyanlabs-relay-mac-capturer \
+            --exclude liyanlabs-relay-capturer
 
   build-and-push:
     name: build ${{ matrix.bin }}

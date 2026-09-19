@@ -1135,6 +1135,140 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
+name = "liyanlabs-relay-capturer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "futures-util",
+ "liyanlabs-relay-mac-capturer",
+ "log",
+ "tokio",
+ "tokio-tungstenite",
+ "url",
+]
+
+[[package]]
+name = "liyanlabs-relay-common"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "liyanlabs-relay-control"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "liyanlabs-relay-common",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "liyanlabs-relay-mac-capturer"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "liyanlabs-relay-proto"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "prost",
+ "prost-build",
+ "protox",
+ "tokio-util",
+]
+
+[[package]]
+name = "liyanlabs-relay-rendezvous"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "env_logger",
+ "futures-util",
+ "liyanlabs-relay-common",
+ "liyanlabs-relay-proto",
+ "log",
+ "prost",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+]
+
+[[package]]
+name = "liyanlabs-relay-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "env_logger",
+ "futures-util",
+ "liyanlabs-relay-proto",
+ "log",
+ "prost",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+]
+
+[[package]]
+name = "liyanlabs-relay-stream"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "clap",
+ "env_logger",
+ "futures-util",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "liyanlabs-relay-win-capturer"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "windows 0.58.0",
+ "windows-capture",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1907,140 +2041,6 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
-
-[[package]]
-name = "scilaxy-relay-capturer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "futures-util",
- "log",
- "scilaxy-relay-mac-capturer",
- "tokio",
- "tokio-tungstenite",
- "url",
-]
-
-[[package]]
-name = "scilaxy-relay-common"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "scilaxy-relay-control"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "clap",
- "rand 0.8.6",
- "scilaxy-relay-common",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 2.0.18",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "scilaxy-relay-mac-capturer"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "scilaxy-relay-proto"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "prost",
- "prost-build",
- "protox",
- "tokio-util",
-]
-
-[[package]]
-name = "scilaxy-relay-rendezvous"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "clap",
- "env_logger",
- "futures-util",
- "log",
- "prost",
- "reqwest",
- "scilaxy-relay-common",
- "scilaxy-relay-proto",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
-]
-
-[[package]]
-name = "scilaxy-relay-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "clap",
- "env_logger",
- "futures-util",
- "log",
- "prost",
- "scilaxy-relay-proto",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
-]
-
-[[package]]
-name = "scilaxy-relay-stream"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bytes",
- "clap",
- "env_logger",
- "futures-util",
- "log",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "scilaxy-relay-win-capturer"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "windows 0.58.0",
- "windows-capture",
-]
 
 [[package]]
 name = "scopeguard"
