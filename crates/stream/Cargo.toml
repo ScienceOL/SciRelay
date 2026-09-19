@@ -1,11 +1,11 @@
 [package]
-name = "scilaxy-relay-stream"
+name = "liyanlabs-relay-stream"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "scilaxy-stream"
+name = "liyanlabs-stream"
 path = "src/main.rs"
 
 [dependencies]

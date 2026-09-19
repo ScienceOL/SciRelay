@@ -1,4 +1,4 @@
-//! `scilaxy-relay`: minimal hbbr replacement.
+//! `liyanlabs-relay`: minimal hbbr replacement.
 //!
 //! PoC behaviour (parity with `rustdesk-server-demo`): pair the next two
 //! incoming TCP connections, switch both into raw passthrough, and
@@ -27,16 +27,16 @@ use tokio_tungstenite::{tungstenite::Message as WsMessage, WebSocketStream};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "scilaxy-relay",
+    name = "liyanlabs-relay",
     version,
     about = "RustDesk-compatible TCP relay"
 )]
 struct Args {
     /// Raw TCP relay port (RustDesk default 21117).
-    #[arg(long, env = "SCILAXY_RELAY_PORT", default_value_t = 21117)]
+    #[arg(long, env = "LIYANLABS_RELAY_PORT", default_value_t = 21117)]
     port: u16,
     /// WebSocket relay port (RustDesk default 21119, used by web/RN clients).
-    #[arg(long, env = "SCILAXY_RELAY_WS_PORT", default_value_t = 21119)]
+    #[arg(long, env = "LIYANLABS_RELAY_WS_PORT", default_value_t = 21119)]
     ws_port: u16,
 }
 
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     let ws = TcpListener::bind(&ws_bind)
         .await
         .with_context(|| format!("bind {ws_bind}"))?;
-    log::info!("scilaxy-relay listening on tcp {tcp_bind}, ws {ws_bind}");
+    log::info!("liyanlabs-relay listening on tcp {tcp_bind}, ws {ws_bind}");
 
     let waiting: WaitSlot = std::sync::Arc::new(Mutex::new(None));
 

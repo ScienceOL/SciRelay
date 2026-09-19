@@ -1,4 +1,4 @@
-//! Shared types and helpers across scilaxy-relay crates.
+//! Shared types and helpers across liyanlabs-relay crates.
 
 use serde::{Deserialize, Serialize};
 

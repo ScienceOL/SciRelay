@@ -118,7 +118,7 @@ pub fn start(
     *sender_slot().lock().map_err(|_| "sender mutex poisoned")? = Some(tx);
 
     std::thread::Builder::new()
-        .name("scilaxy-win-capturer".into())
+        .name("liyanlabs-win-capturer".into())
         .spawn(move || {
             if let Err(e) = run_capture_thread() {
                 log::warn!("[win-capturer] capture thread exited: {e:?}");

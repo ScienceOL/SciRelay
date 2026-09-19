@@ -1,5 +1,5 @@
 [package]
-name = "scilaxy-relay-proto"
+name = "liyanlabs-relay-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

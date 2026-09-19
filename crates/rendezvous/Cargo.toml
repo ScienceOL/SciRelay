@@ -1,16 +1,16 @@
 [package]
-name = "scilaxy-relay-rendezvous"
+name = "liyanlabs-relay-rendezvous"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "scilaxy-rendezvous"
+name = "liyanlabs-rendezvous"
 path = "src/main.rs"
 
 [dependencies]
-scilaxy-relay-proto = { path = "../proto" }
-scilaxy-relay-common = { path = "../common" }
+liyanlabs-relay-proto = { path = "../proto" }
+liyanlabs-relay-common = { path = "../common" }
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

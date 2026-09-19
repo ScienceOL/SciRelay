@@ -4,8 +4,8 @@ to a file in the order they arrive.
 """
 import os, sys, socket, struct, base64, time
 
-HOST = os.environ.get("SCILAXY_HOST", "127.0.0.1")
-PORT = int(os.environ.get("SCILAXY_STREAM_PORT", "21130"))
+HOST = os.environ.get("LIYANLABS_HOST", "127.0.0.1")
+PORT = int(os.environ.get("LIYANLABS_STREAM_PORT", "21130"))
 peer = sys.argv[1] if len(sys.argv) > 1 else "test123"
 secs = float(sys.argv[2]) if len(sys.argv) > 2 else 3.0
 out_path = sys.argv[3] if len(sys.argv) > 3 else "/tmp/sample.h264"

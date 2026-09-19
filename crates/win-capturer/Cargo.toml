@@ -1,10 +1,10 @@
 [package]
-name = "scilaxy-relay-win-capturer"
+name = "liyanlabs-relay-win-capturer"
 version.workspace = true
 edition.workspace = true
 # Dual-licensed for the same reason as mac-capturer: this crate is
-# embedded into the MIT-licensed scilaxy-runner via a Cargo path dep.
-# AGPL keeps it consistent with the rest of scilaxy-relay's server-side
+# embedded into the MIT-licensed liyanlabs-runner via a Cargo path dep.
+# AGPL keeps it consistent with the rest of liyanlabs-relay's server-side
 # crates when imported into AGPL contexts.
 license = "MIT OR AGPL-3.0-or-later"
 

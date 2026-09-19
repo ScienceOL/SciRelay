@@ -1,4 +1,4 @@
-//! `scilaxy-stream`: ultra-thin video stream fan-out.
+//! `liyanlabs-stream`: ultra-thin video stream fan-out.
 //!
 //! Two endpoints over WebSocket (axum):
 //!   * `POST /ws/stream/:peer_id`  — publisher. Pushes Binary frames.
@@ -39,12 +39,12 @@ use tower_http::trace::TraceLayer;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "scilaxy-stream",
+    name = "liyanlabs-stream",
     version,
-    about = "binary stream fan-out for scilaxy"
+    about = "binary stream fan-out for liyanlabs"
 )]
 struct Args {
-    #[arg(long, env = "SCILAXY_STREAM_PORT", default_value_t = 21130)]
+    #[arg(long, env = "LIYANLABS_STREAM_PORT", default_value_t = 21130)]
     port: u16,
 }
 
@@ -344,7 +344,7 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind)
         .await
         .with_context(|| format!("bind {bind}"))?;
-    tracing::info!("scilaxy-stream listening on {bind}");
+    tracing::info!("liyanlabs-stream listening on {bind}");
     axum::serve(listener, app).await?;
     Ok(())
 }
