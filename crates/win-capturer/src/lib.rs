@@ -53,5 +53,31 @@ pub struct Nal {
 }
 
 // Re-exported by `start()` in publisher.rs.
-pub(crate) type NalSender = mpsc::Sender<Nal>;
+pub(crate) type NalSender = mpsc::SyncSender<Nal>;
 pub(crate) type NalReceiver = mpsc::Receiver<Nal>;
+
+/// Dropping the receiver stops and joins the native capture thread even when
+/// the screen is static and no further frame callback arrives.
+pub struct Capture {
+    receiver: NalReceiver,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+impl Capture {
+    pub fn recv(&self) -> Result<Nal, mpsc::RecvError> {
+        self.receiver.recv()
+    }
+    pub fn recv_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Nal, mpsc::RecvTimeoutError> {
+        self.receiver.recv_timeout(timeout)
+    }
+}
+impl Drop for Capture {
+    fn drop(&mut self) {
+        publisher::stop();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}

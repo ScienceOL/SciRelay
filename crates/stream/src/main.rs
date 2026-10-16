@@ -1,41 +1,24 @@
-//! `liyanlabs-stream`: ultra-thin video stream fan-out.
-//!
-//! Two endpoints over WebSocket (axum):
-//!   * `POST /ws/stream/:peer_id`  — publisher. Pushes Binary frames.
-//!   * `GET  /ws/view/:peer_id`    — subscriber(s). Receives the same frames.
-//!
-//! For PoC v0 there's no auth: anyone with the URL can publish or watch.
-//! Auth comes via control-plane session tokens in v1.
-//!
-//! Storage model: a `RoomMap` keyed by peer_id holds a `RoomState` with
-//! a `tokio::sync::broadcast` sender plus a small "warm-up" cache of
-//! the most recent keyframe burst. Publishers send into the broadcast;
-//! each subscriber gets its own receiver. Viewers also receive the
-//! warm-up cache the moment they subscribe so the first paint is
-//! instant — without it, a static screen on the publisher (e.g. an
-//! idle macOS desktop) would leave the viewer staring at black until
-//! the next IDR rolls around (or, on a fully idle SCKit dirty-only
-//! capture, forever).
-//!
-//! When the publisher disconnects, the room is dropped and subscribers
-//! see a clean close.
+//! Authenticated device screen fan-out. Admission is checked before upgrade;
+//! one publisher owns each room, and its Runner lease bounds the room lifetime.
+mod admission;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use admission::{Admission, Scope};
 use anyhow::{Context, Result};
 use axum::extract::{
     ws::{Message, WebSocket, WebSocketUpgrade},
-    Path, State,
+    Path, Query, State,
 };
-use axum::response::IntoResponse;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use bytes::Bytes;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, Mutex};
-use tower_http::trace::TraceLayer;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -46,6 +29,10 @@ use tower_http::trace::TraceLayer;
 struct Args {
     #[arg(long, env = "LIYANLABS_STREAM_PORT", default_value_t = 21130)]
     port: u16,
+    #[arg(long, env = "LIYANLABS_MEDIA_ADMISSION_URL")]
+    admission_url: String,
+    #[arg(long, env = "LIYANLABS_CONTROL_TOKEN")]
+    control_token: String,
 }
 
 type RoomMap = Arc<Mutex<HashMap<String, Arc<RoomState>>>>;
@@ -53,6 +40,7 @@ type RoomMap = Arc<Mutex<HashMap<String, Arc<RoomState>>>>;
 #[derive(Clone)]
 struct AppState {
     rooms: RoomMap,
+    admission: Admission,
 }
 
 /// Per-peer room. Holds the live broadcast sink plus a warm-up window
@@ -66,6 +54,8 @@ struct RoomState {
     /// (256) so a brief stall on one slow viewer doesn't make every
     /// other viewer skip a frame.
     tx: broadcast::Sender<Bytes>,
+    closed: tokio::sync::watch::Sender<bool>,
+    scope: Scope,
     /// Warm-up cache: parameter sets (VPS/SPS/PPS) the publisher has
     /// emitted, plus the most recent IDR access unit and every delta
     /// frame after it. On viewer subscribe we replay this in order so
@@ -331,14 +321,10 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let state = AppState {
         rooms: Arc::new(Mutex::new(HashMap::new())),
+        admission: Admission::new(args.admission_url, args.control_token)?,
     };
 
-    let app = Router::new()
-        .route("/ws/stream/:peer_id", get(stream_publisher))
-        .route("/ws/view/:peer_id", get(stream_viewer))
-        .route("/healthz", get(|| async { "ok" }))
-        .with_state(state)
-        .layer(TraceLayer::new_for_http());
+    let app = router(state);
 
     let bind = format!("0.0.0.0:{}", args.port);
     let listener = tokio::net::TcpListener::bind(&bind)
@@ -349,106 +335,172 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Look up (or create) the room state for `peer_id`. The returned
-/// `Arc` is shared with the in-map entry so publisher writes and
-/// viewer reads see the same warm-up cache.
-async fn room_for(rooms: &RoomMap, peer_id: &str) -> Arc<RoomState> {
-    let mut map = rooms.lock().await;
-    map.entry(peer_id.to_string())
-        .or_insert_with(|| {
-            Arc::new(RoomState {
-                tx: broadcast::channel(256).0,
-                warmup: std::sync::Mutex::new(WarmupWindow::default()),
-            })
-        })
-        .clone()
+fn router(state: AppState) -> Router {
+    Router::new()
+        .route("/ws/stream/:peer_id", get(stream_publisher))
+        .route("/ws/view/:peer_id", get(stream_viewer))
+        .route("/healthz", get(|| async { "ok" }))
+        .with_state(state)
+}
+
+#[cfg(test)]
+mod transport_tests;
+
+#[derive(serde::Deserialize)]
+struct Ticket {
+    ticket: String,
 }
 
 async fn stream_publisher(
     Path(peer_id): Path<String>,
     State(s): State<AppState>,
+    Query(ticket): Query<Ticket>,
     ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_publisher(socket, peer_id, s.rooms).await {
-            tracing::warn!("publisher ended: {e}");
-        }
-    })
+) -> Response {
+    let scope = match s.admission.admit(&ticket.ticket, &peer_id, "publish").await {
+        Ok(scope) => scope,
+        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+    };
+    ws.max_message_size(8 * 1024 * 1024)
+        .on_upgrade(move |socket| async move {
+            let room = Arc::new(RoomState {
+                tx: broadcast::channel(256).0,
+                closed: tokio::sync::watch::channel(false).0,
+                scope,
+                warmup: std::sync::Mutex::new(WarmupWindow::default()),
+            });
+            {
+                let mut rooms = s.rooms.lock().await;
+                if let Some(previous) = rooms.get(&peer_id) {
+                    let previous_generation =
+                        previous.scope.generation.parse::<u64>().unwrap_or(u64::MAX);
+                    let generation = room.scope.generation.parse::<u64>().unwrap_or(0);
+                    if previous.scope.owner_id != room.scope.owner_id
+                        || generation <= previous_generation
+                    {
+                        return;
+                    }
+                    previous.closed.send_replace(true);
+                } else if rooms.len() >= 1000 {
+                    return;
+                }
+                rooms.insert(peer_id.clone(), room.clone());
+            }
+            let result = handle_publisher(socket, &room, &s.admission).await;
+            room.closed.send_replace(true);
+            let mut rooms = s.rooms.lock().await;
+            if rooms
+                .get(&peer_id)
+                .is_some_and(|current| Arc::ptr_eq(current, &room))
+            {
+                rooms.remove(&peer_id);
+            }
+            drop(rooms);
+            if result.is_err() {
+                tracing::info!("publisher disconnected for peer={peer_id}");
+            }
+        })
+        .into_response()
 }
 
-async fn handle_publisher(mut ws: WebSocket, peer_id: String, rooms: RoomMap) -> Result<()> {
-    tracing::info!("publisher connected for peer_id={peer_id}");
-    let room = room_for(&rooms, &peer_id).await;
-
-    while let Some(item) = ws.next().await {
-        match item? {
-            Message::Binary(bytes) => {
-                let frame = Bytes::from(bytes);
-                // Update the warm-up cache before fan-out so a viewer
-                // that subscribes mid-frame either sees the cached
-                // version OR the live one — never neither.
-                let became_keyframe = match room.warmup.lock() {
-                    Ok(mut w) => w.record(frame.clone()),
-                    Err(p) => p.into_inner().record(frame.clone()),
-                };
-                if became_keyframe {
-                    tracing::debug!("peer_id={peer_id} cached new keyframe");
-                }
-                let n_recv = room.tx.receiver_count();
-                let _ = room.tx.send(frame);
-                tracing::trace!("peer_id={peer_id} fanout={n_recv}");
+async fn handle_publisher(
+    mut ws: WebSocket,
+    room: &RoomState,
+    admission: &Admission,
+) -> Result<()> {
+    let mut closed = room.closed.subscribe();
+    if *closed.borrow() {
+        return Ok(());
+    }
+    ws.send(Message::Text("ready".into())).await?;
+    let authority = async {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+            if !admission.check_lease(&room.scope).await {
+                break;
             }
-            Message::Close(_) => break,
-            // Ignore text / ping / pong / fragment.
-            _ => {}
+        }
+    };
+    tokio::pin!(authority);
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut last_viewer = std::time::Instant::now();
+    loop {
+        tokio::select! {
+            _ = &mut authority => break,
+            _ = closed.changed()=>break,
+            _ = heartbeat.tick() => {
+                if room.tx.receiver_count()>0 {last_viewer=std::time::Instant::now();}
+                else if last_viewer.elapsed()>std::time::Duration::from_secs(15) {
+                    ws.send(Message::Close(Some(axum::extract::ws::CloseFrame {code:1000,reason:"no viewers".into()}))).await?;
+                    break;
+                }
+                ws.send(Message::Ping(Vec::new())).await?;
+            }
+            item = ws.next() => {
+                match item {
+                    Some(Ok(Message::Binary(bytes))) => {
+                        let frame = Bytes::from(bytes);
+                        let mut warmup = room.warmup.lock().unwrap_or_else(|p|p.into_inner());
+                        warmup.record(frame.clone());
+                        let _ = room.tx.send(frame);
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Err(error)) => return Err(error.into()),
+                    _ => {},
+                }
+            }
         }
     }
-
-    // Drop the room if no one is publishing or watching anymore.
-    // Crucially, dropping the room also drops the warm-up cache so a
-    // future publisher session for the same peer doesn't replay stale
-    // frames captured by the prior process.
-    let mut map = rooms.lock().await;
-    if let Some(s) = map.get(&peer_id) {
-        if s.tx.receiver_count() == 0 {
-            map.remove(&peer_id);
-            tracing::info!("publisher exited, room dropped for peer_id={peer_id}");
-        } else {
-            tracing::info!(
-                "publisher exited, {} viewers still subscribed to peer_id={peer_id}",
-                s.tx.receiver_count()
-            );
-        }
-    }
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), ws.close()).await;
     Ok(())
 }
 
 async fn stream_viewer(
     Path(peer_id): Path<String>,
     State(s): State<AppState>,
+    Query(ticket): Query<Ticket>,
     ws: WebSocketUpgrade,
-) -> impl IntoResponse {
+) -> Response {
+    let scope = match s.admission.admit(&ticket.ticket, &peer_id, "view").await {
+        Ok(scope) => scope,
+        Err(_) => return StatusCode::FORBIDDEN.into_response(),
+    };
+    let room = s.rooms.lock().await.get(&peer_id).cloned();
+    let Some(room) = room else {
+        return StatusCode::CONFLICT.into_response();
+    };
+    if room.scope.owner_id != scope.owner_id
+        || room.scope.generation != scope.generation
+        || *room.closed.borrow()
+    {
+        return StatusCode::CONFLICT.into_response();
+    }
     ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_viewer(socket, peer_id, s.rooms).await {
-            tracing::warn!("viewer ended: {e}");
+        if !matches!(
+            tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                handle_viewer(socket, room)
+            )
+            .await,
+            Ok(Ok(()))
+        ) {
+            tracing::info!("viewer disconnected for peer={peer_id}");
         }
     })
+    .into_response()
 }
 
-async fn handle_viewer(ws: WebSocket, peer_id: String, rooms: RoomMap) -> Result<()> {
-    tracing::info!("viewer connected for peer_id={peer_id}");
-    let room = room_for(&rooms, &peer_id).await;
-    // Subscribe FIRST, snapshot SECOND. This ordering matters: if we
-    // snapshot before subscribing, a new keyframe could land between
-    // the two calls and we'd send the cached frame followed by a
-    // delta-only stream that doesn't include the matching key — the
-    // decoder would error on first decode. Subscribing first means
-    // any new frame after the snapshot is still in our channel
-    // backlog and will be delivered after the warm-up replay.
-    let mut rx = room.tx.subscribe();
-    let warmup_frames: Vec<Bytes> = match room.warmup.lock() {
-        Ok(w) => w.snapshot(),
-        Err(p) => p.into_inner().snapshot(),
+async fn handle_viewer(ws: WebSocket, room: Arc<RoomState>) -> Result<()> {
+    let peer_id = &room.scope.runner_id;
+    let mut closed = room.closed.subscribe();
+    if *closed.borrow() {
+        return Ok(());
+    }
+    // Record + broadcast and subscribe + snapshot share the same short lock.
+    // A frame is either in warm-up or in the live receiver, never in both.
+    let (mut rx, warmup_frames) = {
+        let warmup = room.warmup.lock().unwrap_or_else(|p| p.into_inner());
+        (room.tx.subscribe(), warmup.snapshot())
     };
 
     let (mut sink, mut stream) = ws.split();
@@ -463,45 +515,33 @@ async fn handle_viewer(ws: WebSocket, peer_id: String, rooms: RoomMap) -> Result
             warmup_frames.len()
         );
         for frame in warmup_frames {
-            if sink.send(Message::Binary(frame.to_vec())).await.is_err() {
+            if !send_viewer(&mut sink, &mut closed, Message::Binary(frame.to_vec())).await {
                 // Viewer hung up before we finished priming — bail.
                 return Ok(());
             }
         }
     }
 
-    // Reader task: just discard inbound frames (viewer doesn't talk back yet),
-    // but watch for close so we can shut down cleanly.
-    let close_watch = tokio::spawn(async move {
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(Message::Close(_)) | Err(_) => break,
-                _ => continue,
-            }
-        }
-    });
-
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(20));
     loop {
         tokio::select! {
-            biased;
-            _ = &mut Box::pin(async {
-                // Tiny shim so close_watch can be polled too.
-                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            }) => {
-                // Heartbeat ping every minute keeps idle WS alive through proxies.
-                if sink.send(Message::Ping(Default::default())).await.is_err() {
-                    break;
-                }
+            _ = closed.changed() => break,
+            incoming = stream.next() => {
+                if matches!(incoming, None | Some(Err(_)) | Some(Ok(Message::Close(_)))) {break;}
+            },
+            _ = heartbeat.tick() => {
+                if !send_viewer(&mut sink,&mut closed,Message::Ping(Vec::new())).await {break;}
             }
             res = rx.recv() => {
                 match res {
                     Ok(bytes) => {
-                        if sink.send(Message::Binary(bytes.to_vec())).await.is_err() {
+                        if !send_viewer(&mut sink,&mut closed,Message::Binary(bytes.to_vec())).await {
                             break;
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!("viewer lagged, dropped {n} frames");
+                        tracing::warn!("viewer lagged by {n} frames; closing for a fresh keyframe");
+                        break;
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
@@ -509,8 +549,21 @@ async fn handle_viewer(ws: WebSocket, peer_id: String, rooms: RoomMap) -> Result
         }
     }
 
-    close_watch.abort();
     Ok(())
+}
+
+async fn send_viewer(
+    sink: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    closed: &mut tokio::sync::watch::Receiver<bool>,
+    message: Message,
+) -> bool {
+    if *closed.borrow() {
+        return false;
+    }
+    tokio::select! {
+        _=closed.changed()=>false,
+        result=tokio::time::timeout(std::time::Duration::from_secs(2),sink.send(message))=>matches!(result,Ok(Ok(()))),
+    }
 }
 
 #[cfg(test)]

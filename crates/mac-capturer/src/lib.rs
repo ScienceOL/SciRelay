@@ -5,8 +5,10 @@
 
 #![cfg(target_os = "macos")]
 
+use std::collections::HashMap;
 use std::os::raw::{c_int, c_void};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Mutex, OnceLock};
 
 extern "C" {
     fn liyanlabs_capturer_start(
@@ -18,6 +20,7 @@ extern "C" {
         ctx: *mut c_void,
         cb: extern "C" fn(*mut c_void, *const u8, isize, i64),
     ) -> c_int;
+    fn liyanlabs_capturer_stop(ctx: *mut c_void);
     fn liyanlabs_capturer_select_display(display_id: u32) -> c_int;
     fn liyanlabs_capturer_active_display_id() -> u32;
     fn liyanlabs_capturer_list_displays_json(out: *mut u8, cap: isize) -> isize;
@@ -36,20 +39,64 @@ pub struct Nal {
     pub pts_us: i64,
 }
 
-/// Start the capture pipeline. The returned receiver yields one `Nal` per
-/// encoded NAL unit until the process exits. Pass `display_id = 0` for
-/// the default display; use `list_displays()` to enumerate.
+fn senders() -> &'static Mutex<HashMap<usize, mpsc::SyncSender<Nal>>> {
+    static SENDERS: OnceLock<Mutex<HashMap<usize, mpsc::SyncSender<Nal>>>> = OnceLock::new();
+    SENDERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lifecycle() -> &'static Mutex<()> {
+    static LIFECYCLE: Mutex<()> = Mutex::new(());
+    &LIFECYCLE
+}
+
+pub struct Capture {
+    id: usize,
+    receiver: mpsc::Receiver<Nal>,
+}
+impl Capture {
+    pub fn recv(&self) -> Result<Nal, mpsc::RecvError> {
+        self.receiver.recv()
+    }
+    pub fn recv_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Nal, mpsc::RecvTimeoutError> {
+        self.receiver.recv_timeout(timeout)
+    }
+}
+impl Drop for Capture {
+    fn drop(&mut self) {
+        let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
+        senders()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&self.id);
+        unsafe { liyanlabs_capturer_stop(self.id as *mut c_void) };
+    }
+}
+
+/// The receiver owns the capture lifetime; queues and callback registrations
+/// are bounded and disappear when publishing stops.
 pub fn start(
     width: u32,
     height: u32,
     fps: u32,
     bitrate_kbps: u32,
     display_id: u32,
-) -> Result<mpsc::Receiver<Nal>, &'static str> {
-    let (tx, rx) = mpsc::channel::<Nal>();
-    let boxed: Box<mpsc::Sender<Nal>> = Box::new(tx);
-    let ctx = Box::into_raw(boxed) as *mut c_void;
-
+) -> Result<Capture, &'static str> {
+    let _guard = lifecycle()
+        .lock()
+        .map_err(|_| "capture lifecycle unavailable")?;
+    static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
+    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = mpsc::sync_channel(128);
+    {
+        let mut slots = senders().lock().map_err(|_| "capture state unavailable")?;
+        if !slots.is_empty() {
+            return Err("capturer already running");
+        }
+        slots.insert(id, tx);
+    }
     let rc = unsafe {
         liyanlabs_capturer_start(
             width as i32,
@@ -57,21 +104,25 @@ pub fn start(
             fps as i32,
             bitrate_kbps as i32,
             display_id,
-            ctx,
+            id as *mut c_void,
             on_nal,
         )
     };
     if rc != 0 {
-        unsafe { drop(Box::from_raw(ctx as *mut mpsc::Sender<Nal>)) };
+        senders()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&id);
         return Err("liyanlabs_capturer_start failed");
     }
-    Ok(rx)
+    Ok(Capture { id, receiver: rx })
 }
 
 /// Switch the running capturer to a different display. Cheap — does not
 /// tear down the encoder or WS publisher; just swaps SCKit's content
 /// filter. The next encoded keyframe will reflect the new display.
 pub fn select_display(display_id: u32) -> Result<(), &'static str> {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let rc = unsafe { liyanlabs_capturer_select_display(display_id) };
     match rc {
         0 => Ok(()),
@@ -82,12 +133,14 @@ pub fn select_display(display_id: u32) -> Result<(), &'static str> {
 
 /// Currently active display id, or `0` if no capturer is running.
 pub fn active_display_id() -> u32 {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     unsafe { liyanlabs_capturer_active_display_id() }
 }
 
 /// Set the encoder's average bitrate ceiling (kbps). Cheap — VT applies
 /// it on the next frame.
 pub fn set_bitrate_kbps(kbps: u32) -> Result<(), &'static str> {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let rc = unsafe { liyanlabs_capturer_set_bitrate(kbps as i32) };
     match rc {
         0 => Ok(()),
@@ -98,6 +151,7 @@ pub fn set_bitrate_kbps(kbps: u32) -> Result<(), &'static str> {
 
 /// Currently configured bitrate (kbps), or 0 if no capturer running.
 pub fn bitrate_kbps() -> u32 {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let v = unsafe { liyanlabs_capturer_bitrate_kbps() };
     if v < 0 {
         0
@@ -108,6 +162,7 @@ pub fn bitrate_kbps() -> u32 {
 
 /// Set the target framerate. Updates SCKit + VT in one shot.
 pub fn set_fps(fps: u32) -> Result<(), &'static str> {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let rc = unsafe { liyanlabs_capturer_set_fps(fps as i32) };
     match rc {
         0 => Ok(()),
@@ -117,6 +172,7 @@ pub fn set_fps(fps: u32) -> Result<(), &'static str> {
 }
 
 pub fn fps() -> u32 {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let v = unsafe { liyanlabs_capturer_fps() };
     if v < 0 {
         0
@@ -128,6 +184,7 @@ pub fn fps() -> u32 {
 /// Switch output resolution. Briefly freezes the viewer (~200ms) while
 /// the encoder rebuilds.
 pub fn set_resolution(width: u32, height: u32) -> Result<(), &'static str> {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let rc = unsafe { liyanlabs_capturer_set_resolution(width as i32, height as i32) };
     match rc {
         0 => Ok(()),
@@ -138,6 +195,7 @@ pub fn set_resolution(width: u32, height: u32) -> Result<(), &'static str> {
 
 /// Returns `(width, height)`, or `(0, 0)` if no capturer is running.
 pub fn resolution() -> (u32, u32) {
+    let _guard = lifecycle().lock().unwrap_or_else(|p| p.into_inner());
     let v = unsafe { liyanlabs_capturer_resolution() };
     if v <= 0 {
         return (0, 0);
@@ -183,6 +241,11 @@ extern "C" fn on_nal(ctx: *mut c_void, data: *const u8, len: isize, pts_us: i64)
         data: slice.to_vec(),
         pts_us,
     };
-    let tx = unsafe { &*(ctx as *const mpsc::Sender<Nal>) };
-    let _ = tx.send(nal);
+    if let Some(tx) = senders()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(&(ctx as usize))
+    {
+        let _ = tx.try_send(nal);
+    }
 }

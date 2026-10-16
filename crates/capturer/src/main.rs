@@ -19,17 +19,9 @@ use tokio_tungstenite::tungstenite::Message;
     about = "screen → HEVC → liyanlabs-stream WS"
 )]
 struct Args {
-    /// Stream peer id (the room name on liyanlabs-stream).
-    #[arg(long, env = "LIYANLABS_PEER_ID")]
-    peer_id: String,
-
-    /// liyanlabs-stream publisher URL. Path part is auto-suffixed with the peer id.
-    #[arg(
-        long,
-        env = "LIYANLABS_STREAM_URL",
-        default_value = "ws://127.0.0.1:21130/ws/stream"
-    )]
-    stream_url: String,
+    /// Complete short-lived publisher URL issued for this device generation.
+    #[arg(long, env = "LIYANLABS_PUBLISH_URL")]
+    publish_url: String,
 
     /// Frame width — capturer scales to this.
     #[arg(long, default_value_t = 1920)]
@@ -53,11 +45,11 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse();
 
-    let url = format!("{}/{}", args.stream_url.trim_end_matches('/'), args.peer_id);
-    log::info!("connecting publisher to {url}");
+    let url = args.publish_url;
+    log::info!("connecting authenticated publisher");
     let (ws, _) = tokio_tungstenite::connect_async(&url)
         .await
-        .with_context(|| format!("ws connect {url}"))?;
+        .context("screen relay connection failed")?;
     log::info!("publisher connected, starting capturer");
     let (mut sink, _) = futures_util::StreamExt::split(ws);
 
@@ -108,7 +100,7 @@ fn start_native(
     height: u32,
     fps: u32,
     bitrate_kbps: u32,
-) -> Result<std::sync::mpsc::Receiver<liyanlabs_relay_mac_capturer::Nal>> {
+) -> Result<liyanlabs_relay_mac_capturer::Capture> {
     // display_id=0 selects the primary display, matching mac-capturer's
     // convention. The standalone capturer binary is a PoC and doesn't
     // expose a picker — production runners go through liyanlabs-runner's
