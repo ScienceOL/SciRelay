@@ -28,11 +28,16 @@
 //!   * fps / resolution / display — same: flip `needs_rebuild`,
 //!     loop rebuilds.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::Media::MediaFoundation::{MFShutdown, MFStartup, MF_VERSION};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::WindowsAndMessaging::{
+    PeekMessageW, PostThreadMessageW, MSG, PM_NOREMOVE, WM_QUIT,
+};
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
@@ -74,6 +79,7 @@ fn state() -> &'static Mutex<State> {
 /// the polling cheap; we only need ordering relative to other writes
 /// to `state()`.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+static CAPTURE_THREAD: AtomicU32 = AtomicU32::new(0);
 
 /// Channel the capture thread sends NALs through. Re-created on each
 /// `start()` call. We stash it in a OnceLock<Mutex<Option<...>>> so
@@ -98,7 +104,7 @@ pub fn start(
     fps: u32,
     bitrate_kbps: u32,
     display_id: u32,
-) -> Result<crate::NalReceiver, &'static str> {
+) -> Result<crate::Capture, &'static str> {
     {
         let mut s = state().lock().map_err(|_| "state mutex poisoned")?;
         if s.running {
@@ -114,28 +120,37 @@ pub fn start(
     }
     SHUTDOWN.store(false, Ordering::SeqCst);
 
-    let (tx, rx) = std::sync::mpsc::channel::<Nal>();
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Nal>(128);
     *sender_slot().lock().map_err(|_| "sender mutex poisoned")? = Some(tx);
 
-    std::thread::Builder::new()
+    let thread = std::thread::Builder::new()
         .name("liyanlabs-win-capturer".into())
         .spawn(move || {
             if let Err(e) = run_capture_thread() {
                 log::warn!("[win-capturer] capture thread exited: {e:?}");
             }
-            SHUTDOWN.store(false, Ordering::SeqCst);
+            CAPTURE_THREAD.store(0, Ordering::SeqCst);
             *sender_slot().lock().expect("sender mutex") = None;
             let mut s = state().lock().expect("state mutex");
             s.running = false;
         })
         .map_err(|_| "thread::spawn failed")?;
 
-    Ok(rx)
+    Ok(crate::Capture {
+        receiver: rx,
+        thread: Some(thread),
+    })
 }
 
 /// Stop the publisher. Idempotent; safe to call before `start`.
 pub fn stop() {
     SHUTDOWN.store(true, Ordering::SeqCst);
+    let thread = CAPTURE_THREAD.load(Ordering::SeqCst);
+    if thread != 0 {
+        unsafe {
+            let _ = PostThreadMessageW(thread, WM_QUIT, WPARAM::default(), LPARAM::default());
+        }
+    }
 }
 
 /// Switch the running publisher to a different monitor.
@@ -222,6 +237,14 @@ fn run_capture_thread() -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         MFStartup(MF_VERSION, 0)?;
+    }
+
+    // Create the message queue before exposing the ID to stop(). WGC's
+    // implementing start() runs GetMessageW on this same thread.
+    unsafe {
+        let mut message = MSG::default();
+        let _ = PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE);
+        CAPTURE_THREAD.store(GetCurrentThreadId(), Ordering::SeqCst);
     }
 
     // Outer loop drives rebuilds. When the encoder needs to be
@@ -401,10 +424,10 @@ impl GraphicsCaptureApiHandler for ScreenshareHandler {
                 drop(sender_guard);
                 if let Some(tx) = sender {
                     for nal in nals {
-                        // tx.send returns Err only when the receiver
-                        // was dropped, i.e. the runner-side WS died.
-                        // End the session in that case.
-                        if tx.send(nal).is_err() {
+                        if matches!(
+                            tx.try_send(nal),
+                            Err(std::sync::mpsc::TrySendError::Disconnected(_))
+                        ) {
                             SHUTDOWN.store(true, Ordering::SeqCst);
                             capture_control.stop();
                             break;

@@ -69,10 +69,26 @@ jobs:
             --exclude liyanlabs-relay-mac-capturer \
             --exclude liyanlabs-relay-capturer
 
+  native-capturers:
+    name: native capturer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            package: liyanlabs-relay-mac-capturer
+          - os: windows-latest
+            package: liyanlabs-relay-win-capturer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked -p ${{ matrix.package }}
+
   build-and-push:
     name: build ${{ matrix.bin }}
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, native-capturers]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false

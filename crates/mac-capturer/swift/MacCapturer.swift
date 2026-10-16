@@ -57,11 +57,19 @@ public func liyanlabs_capturer_start(
     do {
         try s.start()
     } catch {
+        s.stop()
         NSLog("liyanlabs mac-capturer: start failed: \(error)")
         return 1
     }
     sharedCapturer = s
     return 0
+}
+
+@_cdecl("liyanlabs_capturer_stop")
+public func liyanlabs_capturer_stop(ctx: UnsafeMutableRawPointer?) {
+    guard let capturer=sharedCapturer, capturer.ctx==ctx else { return }
+    sharedCapturer=nil
+    capturer.stop()
 }
 
 /// Switch the running capturer to a different display. Returns 0 on
@@ -202,7 +210,7 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     private var width: Int
     private var height: Int
     private var fps: Int
-    private let ctx: UnsafeMutableRawPointer?
+    let ctx: UnsafeMutableRawPointer?
     private let cb: LiyanLabsNalCallback
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
@@ -240,6 +248,15 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     var currentWidth: Int { width }
     var currentHeight: Int { height }
     var currentFps: Int { fps }
+
+    func stop() {
+        stream?.stopCapture { _ in }
+        stream=nil
+        queue.sync {
+            if let encoder=self.encoder { VTCompressionSessionInvalidate(encoder) }
+            self.encoder=nil
+        }
+    }
 
     func start() throws {
         NSLog("liyanlabs mac-capturer: start()")
