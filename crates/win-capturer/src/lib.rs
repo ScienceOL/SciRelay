@@ -61,6 +61,7 @@ pub(crate) type NalReceiver = mpsc::Receiver<Nal>;
 pub struct Capture {
     receiver: NalReceiver,
     thread: Option<std::thread::JoinHandle<()>>,
+    _owner: std::sync::Arc<()>,
 }
 impl Capture {
     pub fn recv(&self) -> Result<Nal, mpsc::RecvError> {

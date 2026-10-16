@@ -29,7 +29,7 @@
 //!     loop rebuilds.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::Media::MediaFoundation::{MFShutdown, MFStartup, MF_VERSION};
@@ -63,6 +63,9 @@ struct State {
     /// Cleared when stop() runs so the public getters report 0
     /// rather than stale "last known" values.
     running: bool,
+    /// Ownership survives thread failure until the receiver is dropped. A stale
+    /// receiver therefore cannot stop a newer native capture session.
+    owner: Weak<()>,
     /// Latched true when the capture thread observes a settings change
     /// it can't apply live (display swap, resolution swap, bitrate
     /// change). The thread drains the flag on its next iteration and
@@ -105,11 +108,13 @@ pub fn start(
     bitrate_kbps: u32,
     display_id: u32,
 ) -> Result<crate::Capture, &'static str> {
+    let owner = Arc::new(());
     {
         let mut s = state().lock().map_err(|_| "state mutex poisoned")?;
-        if s.running {
+        if s.owner.strong_count() > 0 {
             return Err("publisher already running");
         }
+        s.owner = Arc::downgrade(&owner);
         s.width = width;
         s.height = height;
         s.fps = fps;
@@ -134,11 +139,21 @@ pub fn start(
             let mut s = state().lock().expect("state mutex");
             s.running = false;
         })
-        .map_err(|_| "thread::spawn failed")?;
+        .map_err(|_| {
+            state()
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .running = false;
+            *sender_slot()
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = None;
+            "thread::spawn failed"
+        })?;
 
     Ok(crate::Capture {
         receiver: rx,
         thread: Some(thread),
+        _owner: owner,
     })
 }
 
