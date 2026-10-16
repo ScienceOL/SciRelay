@@ -64,6 +64,15 @@ async fn admission_fanout_and_disconnect_preserve_room_authority() {
         .await
         .unwrap();
     assert!(matches!(publisher.next().await, Some(Ok(Frame::Text(text))) if text == "ready"));
+    let (mut duplicate, _) = connect_async(format!("{base}/ws/stream/peer?ticket=publish-peer"))
+        .await
+        .unwrap();
+    let rejected = tokio::time::timeout(std::time::Duration::from_secs(2), duplicate.next())
+        .await
+        .unwrap();
+    assert!(
+        matches!(rejected, Some(Ok(Frame::Close(Some(frame)))) if frame.code == tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Policy)
+    );
     let vps = stamped(&[0, 0, 0, 1, 0x40, 1]);
     let idr = stamped(&[0, 0, 0, 1, 0x26, 1, 7]);
     publisher.send(Frame::Binary(vps)).await.unwrap();

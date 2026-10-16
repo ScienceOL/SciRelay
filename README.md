@@ -15,8 +15,9 @@ Publishers and viewers obtain device/generation/purpose-bound admission URLs
 from the authenticated API. A peer ID never proves authority. Publisher
 replacement fences the prior generation, closes its viewers, and clears its
 cached frames. The existing Runner lease is checked once every 20 seconds per
-publisher; failure closes the room. Media bytes never go through the business
-API. Last-viewer idle time is 15 seconds.
+publisher; revocation and admission-service failure both close the room. Media bytes never go through the business
+API. Last-viewer idle time is 15 seconds, including the initial wait for a viewer.
+Active viewers reconnect for fresh owner authorization after at most 5 minutes.
 
 `liyanlabs-capturer --publish-url <authorized-url>` is a device-local diagnostic.
 Run `cargo test -p liyanlabs-relay-stream` for authenticated fan-out and
