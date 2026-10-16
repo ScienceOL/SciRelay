@@ -39,7 +39,7 @@ impl Admission {
     }
 
     pub async fn admit(&self, ticket: &str, runner: &str, action: &str) -> Result<Scope> {
-        if ticket.is_empty() || ticket.len() > 4096 {
+        if ticket.is_empty() || ticket.len() > 4096 || runner.is_empty() || runner.len() > 128 {
             bail!("media ticket required");
         }
         let response = self
@@ -61,19 +61,35 @@ impl Admission {
             || scope.action != action
             || scope.source_id != "screen"
             || scope.kind != "screen"
+            || !scope
+                .generation
+                .parse::<u64>()
+                .is_ok_and(|value| value > 0 && value.to_string() == scope.generation)
         {
             bail!("media admission scope mismatch");
         }
         Ok(scope)
     }
 
-    pub async fn check_lease(&self, scope: &Scope) -> bool {
-        self.client
+    pub async fn check_lease(&self, scope: &Scope) -> Result<(), LeaseFailure> {
+        let response = self
+            .client
             .post(format!("{}/lease", self.base))
             .bearer_auth(&self.token)
             .json(scope)
             .send()
             .await
-            .is_ok_and(|response| response.status().is_success())
+            .map_err(|_| LeaseFailure::Unavailable)?;
+        match response.status().as_u16() {
+            200..=299 => Ok(()),
+            401 | 403 => Err(LeaseFailure::Denied),
+            _ => Err(LeaseFailure::Unavailable),
+        }
     }
+}
+
+#[derive(Debug)]
+pub enum LeaseFailure {
+    Denied,
+    Unavailable,
 }

@@ -47,11 +47,19 @@ async fn main() -> Result<()> {
 
     let url = args.publish_url;
     log::info!("connecting authenticated publisher");
-    let (ws, _) = tokio_tungstenite::connect_async(&url)
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url)
         .await
         .context("screen relay connection failed")?;
+    let ready = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        futures_util::StreamExt::next(&mut ws),
+    )
+    .await;
+    if !matches!(ready, Ok(Some(Ok(Message::Text(ref text)))) if text == "ready") {
+        anyhow::bail!("publisher admission rejected");
+    }
     log::info!("publisher connected, starting capturer");
-    let (mut sink, _) = futures_util::StreamExt::split(ws);
+    let (mut sink, mut source) = futures_util::StreamExt::split(ws);
 
     let rx = start_native(args.width, args.height, args.fps, args.bitrate_kbps)?;
 
@@ -64,14 +72,27 @@ async fn main() -> Result<()> {
     // `recv` blocks the current thread, so spawn a blocking task to bridge.
     let (mtx, mut mrx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
     std::thread::spawn(move || {
-        while let Ok(nal) = rx.recv() {
-            if mtx.blocking_send(nal.data).is_err() {
-                break;
+        while !mtx.is_closed() {
+            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(nal) => {
+                    if mtx.blocking_send(nal.data).is_err() {
+                        break;
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(_) => break,
             }
         }
     });
 
-    while let Some(nal) = mrx.recv().await {
+    loop {
+        let nal = tokio::select! {
+            incoming = futures_util::StreamExt::next(&mut source) => {
+                if matches!(incoming, None | Some(Err(_)) | Some(Ok(Message::Close(_)))) {break;}
+                continue;
+            },
+            nal = mrx.recv() => {let Some(nal) = nal else {break;}; nal},
+        };
         let n = nal.len() as u64;
         if let Err(e) = sink.send(Message::Binary(nal)).await {
             log::warn!("ws send: {e}");

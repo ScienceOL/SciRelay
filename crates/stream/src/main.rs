@@ -362,29 +362,54 @@ async fn stream_publisher(
         Err(_) => return StatusCode::FORBIDDEN.into_response(),
     };
     ws.max_message_size(8 * 1024 * 1024)
-        .on_upgrade(move |socket| async move {
+        .on_upgrade(move |mut socket| async move {
             let room = Arc::new(RoomState {
                 tx: broadcast::channel(256).0,
                 closed: tokio::sync::watch::channel(false).0,
                 scope,
                 warmup: std::sync::Mutex::new(WarmupWindow::default()),
             });
-            {
+            let rejection = {
                 let mut rooms = s.rooms.lock().await;
-                if let Some(previous) = rooms.get(&peer_id) {
-                    let previous_generation =
-                        previous.scope.generation.parse::<u64>().unwrap_or(u64::MAX);
-                    let generation = room.scope.generation.parse::<u64>().unwrap_or(0);
+                let rejection = if let Some(previous) = rooms.get(&peer_id) {
+                    let previous_generation = previous
+                        .scope
+                        .generation
+                        .parse::<u64>()
+                        .expect("admitted generation");
+                    let generation = room
+                        .scope
+                        .generation
+                        .parse::<u64>()
+                        .expect("admitted generation");
                     if previous.scope.owner_id != room.scope.owner_id
                         || generation <= previous_generation
                     {
-                        return;
+                        Some("publisher generation already active")
+                    } else {
+                        previous.closed.send_replace(true);
+                        None
                     }
-                    previous.closed.send_replace(true);
                 } else if rooms.len() >= 1000 {
-                    return;
+                    Some("media room capacity reached")
+                } else {
+                    None
+                };
+                if rejection.is_none() {
+                    rooms.insert(peer_id.clone(), room.clone());
                 }
-                rooms.insert(peer_id.clone(), room.clone());
+                rejection
+            };
+            if let Some(reason) = rejection {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    socket.send(Message::Close(Some(axum::extract::ws::CloseFrame {
+                        code: 1008,
+                        reason: reason.into(),
+                    }))),
+                )
+                .await;
+                return;
             }
             let result = handle_publisher(socket, &room, &s.admission).await;
             room.closed.send_replace(true);
@@ -416,7 +441,8 @@ async fn handle_publisher(
     let authority = async {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-            if !admission.check_lease(&room.scope).await {
+            if let Err(reason) = admission.check_lease(&room.scope).await {
+                tracing::warn!(runner_id=%room.scope.runner_id, generation=%room.scope.generation, ?reason, "media lease ended");
                 break;
             }
         }
@@ -475,19 +501,20 @@ async fn stream_viewer(
     {
         return StatusCode::CONFLICT.into_response();
     }
-    ws.on_upgrade(move |socket| async move {
-        if !matches!(
-            tokio::time::timeout(
-                std::time::Duration::from_secs(300),
-                handle_viewer(socket, room)
-            )
-            .await,
-            Ok(Ok(()))
-        ) {
-            tracing::info!("viewer disconnected for peer={peer_id}");
-        }
-    })
-    .into_response()
+    ws.max_message_size(4096)
+        .on_upgrade(move |socket| async move {
+            if !matches!(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(300),
+                    handle_viewer(socket, room)
+                )
+                .await,
+                Ok(Ok(()))
+            ) {
+                tracing::info!("viewer disconnected for peer={peer_id}");
+            }
+        })
+        .into_response()
 }
 
 async fn handle_viewer(ws: WebSocket, room: Arc<RoomState>) -> Result<()> {

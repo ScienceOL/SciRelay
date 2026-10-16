@@ -252,6 +252,8 @@ final class MacCapturer: NSObject, SCStreamDelegate, SCStreamOutput, @unchecked 
     func stop() {
         stream?.stopCapture { _ in }
         stream=nil
+        // The Rust dropper releases the callback sender lock before entering
+        // here. on_nal must remain non-blocking and never acquire lifecycle().
         queue.sync {
             if let encoder=self.encoder { VTCompressionSessionInvalidate(encoder) }
             self.encoder=nil
